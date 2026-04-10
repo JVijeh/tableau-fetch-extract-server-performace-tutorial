@@ -89,7 +89,7 @@ Then, at the top of `fetch_recent_refreshes.py`, set your target datasource:
 DATASOURCE_NAME = "Your Datasource Name"
 
 # If the name isn't unique on your site, I recommend setting the ID here instead.
-# Leave as None to search by name.
+# Leave as 'None' to search by name.
 DATASOURCE_ID = None
 ```
 
@@ -167,7 +167,7 @@ def find_datasource(server, name, datasource_id=None):
     Finds a datasource on the site by ID (if provided) or by name.
 
     Using an ID is the most reliable approach — datasource names may not
-    always be unique across projects on a given site. If you search
+    always be unique across your projects on a given site. If you search
     by name and get multiple matches, this function will print all of them
     with their IDs so you can set DATASOURCE_ID and re-run.
 
@@ -208,10 +208,10 @@ def get_recent_successful_refreshes(server, datasource, sample_size=10):
     """
     Retrieves the last N successful extract refreshes for the given datasource.
 
-    Uses server-side filtering so we never load all background jobs into memory.
-    We also call server.jobs.get() directly — NOT TSC.Pager. Pager is great
-    when you need everything across many pages, but here we want exactly one
-    page of exactly the right size.
+    Filtering is done on the server side so you never have to load all background
+    jobs into memory.  You can also call server.jobs.get() directly — NOT TSC.Pager.
+    Pager is helpful when you need everything across many pages, but here you want
+    exactly one page of exactly the right size.
     """
     options = TSC.RequestOptions(page_size=sample_size)
 
@@ -240,8 +240,8 @@ def calculate_refresh_stats(jobs):
     """
     Calculates duration statistics across a list of completed refresh jobs.
 
-    Duration is measured in seconds from job start to job completion.
-    The suggested_wait is the mean + 2 standard deviations — a starting point
+    Duration is measured in seconds from the start of the job to completion.
+    The suggested_wait is the mean + 2 standard deviations — a reference 
     for how long to wait before polling the server for a job's status.
     Waiting this long before your first check covers roughly 95% of typical
     refresh durations, reducing unnecessary API calls.
@@ -279,12 +279,12 @@ def print_refresh_summary(datasource, jobs, stats):
         return f"{minutes}m {secs:02d}s"
 
     print(f"\n{'=' * 55}")
-    print(f"  Refresh Analysis: {datasource.name}")
+    print(f" Refresh Analysis: {datasource.name}")
     print(f"{'=' * 55}")
-    print(f"  Sample size : {stats['sample_size']} successful refreshes")
-    print(f"  Mean        : {format_duration(stats['mean'])} ({stats['mean']:.1f}s)")
-    print(f"  Std Dev     : {format_duration(stats['stdev'])} ({stats['stdev']:.1f}s)")
-    print(f"  Suggest wait: {format_duration(stats['suggested_wait'])} "
+    print(f" Sample size : {stats['sample_size']} successful refreshes")
+    print(f" Mean        : {format_duration(stats['mean'])} ({stats['mean']:.1f}s)")
+    print(f" Std Dev     : {format_duration(stats['stdev'])} ({stats['stdev']:.1f}s)")
+    print(f" Suggest wait: {format_duration(stats['suggested_wait'])} "
           f"({stats['suggested_wait']:.1f}s)")
     print(f"{'=' * 55}")
 
@@ -299,7 +299,7 @@ def print_refresh_summary(datasource, jobs, stats):
 def validate_results(jobs, stats, sample_size, total_available):
     """
     Runs basic checks on the results and prints warnings if something
-    looks off. These checks help catch situations where the query isn't
+    looks off. These checks look for situations where the query isn't
     returning what you'd expect — before you build a polling strategy on
     data that may not be realistic.
     """
@@ -308,48 +308,48 @@ def validate_results(jobs, stats, sample_size, total_available):
 
     # Check 1: Did we get enough results?
     if len(jobs) < sample_size:
-        print(f"  ⚠ Only {len(jobs)} result(s) returned (requested {sample_size}).")
+        print(f" Only {len(jobs)} result(s) returned (requested {sample_size}).")
         if total_available == 0:
-            print("    No successful refreshes found for this datasource.")
-            print("    Confirm the datasource name matches exactly. Check capitalisation.")
+            print("  No successful refreshes found for this datasource.")
+            print("  Confirm the datasource name matches exactly. Check capitalisation.")
         else:
-            print(f"    Only {total_available} successful refresh(es) exist in its history.")
+            print(f"  Only {total_available} successful refresh(es) exist in its history.")
         issues_found = True
 
-    # Check 2: Is variability too high to trust the suggested wait?
+    # Check 2: Is variability too high for you to trust the suggested wait?
     if stats["mean"] > 0:
         coefficient_of_variation = stats["stdev"] / stats["mean"]
         if coefficient_of_variation > 0.5:
-            print(f"  ⚠ High variability detected (stdev is "
+            print(f"  Large variability found (stdev is "
                   f"{coefficient_of_variation:.0%} of mean).")
-            print("    The suggested wait time may not be reliable.")
-            print("    Consider investigating what causes some refreshes to take much longer.")
+            print("  The suggested wait time may not be reliable.")
+            print("  Consider looking into what is causing some refreshes to take much longer.")
             issues_found = True
 
-    # Check 3: Is the most recent refresh exceptionally old?
+    # Check 3: Is the most recent refresh too old?
     if jobs:
         most_recent = jobs[0].completed_at
         if most_recent:
             now = datetime.now(timezone.utc)
             days_since = (now - most_recent).days
             if days_since > 7:
-                print(f"  ⚠ Most recent successful refresh was {days_since} day(s) ago.")
-                print("    Check whether recent refresh jobs are failing or no longer scheduled.")
+                print(f" Most recent successful refresh was {days_since} day(s) ago.")
+                print("  Check whether the recent refresh jobs are failing or no longer scheduled.")
                 issues_found = True
 
     if not issues_found:
-        print("  ✓ All checks passed.")
+        print("All checks passed!")
 
     print()
 
 
 def save_history(datasource, stats):
     """
-    Appends this run's stats to both a CSV and a JSON history file.
+    Appends this run's stats to both a CSV and a JSON historical file.
 
     CSV is easy to open in Tableau or Excel for trend analysis over time.
-    JSON keeps the structure and is easy to read programmatically.
-    Both files accumulate across multiple runs — they are appended to,
+    JSON helps maintain the structure and is easy to read programmatically.
+    Both files are cumulative across multiple runs — they are appended to,
     not overwritten.
     """
     run_timestamp = datetime.now(timezone.utc).isoformat()
@@ -374,7 +374,7 @@ def save_history(datasource, stats):
             writer.writeheader()
         writer.writerow(row)
 
-    print(f"  CSV history updated: {HISTORY_CSV}")
+    print(f"CSV history updated: {HISTORY_CSV}")
 
     # Write to JSON — load existing history, append, write back
     json_path = Path(HISTORY_JSON)
@@ -404,7 +404,7 @@ server = TSC.Server(TABLEAU_SERVER_URL, use_server_version=True)
 
 with server.auth.sign_in(tableau_auth):
 
-    # Step 1: Find the datasource by ID (if set) or by name
+    # Step 1: Find the datasource by ID (if completed) or by name
     datasource = find_datasource(server, DATASOURCE_NAME, DATASOURCE_ID)
 
     if datasource is None:
@@ -424,7 +424,7 @@ with server.auth.sign_in(tableau_auth):
     stats = calculate_refresh_stats(jobs)
 
     if stats is None:
-        print("Could not calculate stats — Jobs may be missing start/end timestamps.")
+        print("Could not calculate stats.  Jobs may be missing start/end timestamps.")
         exit(1)
 
     # Step 4: Print the summary
@@ -444,7 +444,7 @@ with server.auth.sign_in(tableau_auth):
 
 ### Why server filtering instead of paging through everything?
 
-The naive approach would be to use `TSC.Pager(server.jobs)` to load all background jobs and then filter them in Python. On an active Tableau site, that could mean pulling a large number of jobs into memory just to find 10. Server-side filtering — using `RequestOptions` with filters — pushes that work to Tableau's servers and sends back only the jobs you actually care about.
+The initial thought might be to use `TSC.Pager(server.jobs)` to load all background jobs and then filter them in Python. On an active Tableau site, this could mean pulling a large number of jobs into memory in order to find only 10 total. Server-side filtering  using `RequestOptions` with filters, pushes that work to Tableau's servers and returns only the jobs you actually care about.
 
 The filters used here are:
 
@@ -472,11 +472,11 @@ duration = (job.completed_at - job.started_at).total_seconds()
 
 When you trigger a refresh programmatically, you eventually need to poll Tableau to check whether it's done. Polling too frequently wastes API calls; waiting too long slows down your workflow unnecessarily.
 
-A starting wait of **mean + 2 standard deviations** is a practical baseline. Assuming refresh times follow a roughly normal distribution, this covers approximately 95% of typical refresh durations before your first poll — Most of the time, the job will already be complete when you check. From there, you can poll on a shorter interval for the remaining cases.
+A starting wait of **mean + 2 standard deviations** is a practical baseline. Assuming refresh times follow a normal distribution, this covers about 95% of typical refresh durations before your first poll.  Most of the time, the job will already be completed when you check. From that point, you can poll on a shorter interval for the remaining jobs.
 
 ### Why is datasource name uniqueness important?
 
-Tableau does not enforce unique names across projects. A datasource called "Sales Data" could exist in both the Sales project and the Finance project. If your filter returns multiple matches and you pick the wrong one, your stats are based on the wrong datasource's refresh history — the script will run without error and produce unreliable output. Setting `DATASOURCE_ID` eliminates the possibility.
+Tableau does not enforce unique names across projects. A datasource called "Sales Data" for example, could exist in both the Sales project and the Finance project. If your filter returns multiple matches and you pick the wrong one, your stats are based on the wrong datasource's refresh history.  The script will then run without error and produce unreliable output. Setting `DATASOURCE_ID` eliminates the possibility.
 
 ### What does the validation step detect?
 
@@ -491,6 +491,7 @@ Three things that can cause the query to not return what you expect:
 ### Why both CSV and JSON for history?
 
 The CSV opens directly in Tableau or Excel — You can build a trend line showing whether your datasource is getting slower over time without having to write additional code. The JSON keeps the data structure clean and is easy to read by another Python script or  external tool. Writing both gives you flexibility.
+
 ---
 
 ## Video Walkthrough
