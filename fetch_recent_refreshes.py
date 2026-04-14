@@ -41,8 +41,8 @@ def find_datasource(server, name, datasource_id=None):
     """
     Finds a datasource on the site by ID (if provided) or by name.
 
-    Using an ID is the most reliable approach — datasource names are not
-    guaranteed to be unique across projects on the same site. If you search
+    Using an ID is the most reliable approach — datasource names may not
+    always be unique across projects on a given site. If you search
     by name and get multiple matches, this function will print all of them
     with their IDs so you can set DATASOURCE_ID and re-run.
 
@@ -65,7 +65,7 @@ def find_datasource(server, name, datasource_id=None):
 
     if len(matching) == 0:
         print(f"No datasource found with the name '{name}'.")
-        print("Double-check the spelling or browse your site to confirm the exact name.")
+        print("Double-check the spelling or review your site to confirm the exact name.")
         return None
 
     if len(matching) > 1:
@@ -109,7 +109,7 @@ def get_recent_successful_refreshes(server, datasource, sample_size=10):
     here we want exactly one page of exactly the right size. Using Pager
     would keep fetching pages until it ran out — the opposite of what we want.
     """
-    options = TSC.RequestOptions(page_size=sample_size)
+    options = TSC.RequestOptions(pagesize=sample_size)
 
     # Filter: only extract refresh jobs
     options.filter.add(
@@ -160,11 +160,10 @@ def calculate_refresh_stats(jobs):
       - stdev          : standard deviation (0.0 if only one sample)
       - suggested_wait : mean + 2 standard deviations
 
-    The suggested_wait is based on the empirical rule: mean + 2*stdev covers
-    approximately 95% of outcomes if refresh times are roughly normally
-    distributed. If you poll the server after waiting this long, you're likely
-    to find the job already complete — without having hammered the server with
-    repeated status checks while it was still running.
+    The suggested_wait is the mean + 2 standard deviations — a starting point
+    for how long to wait before polling the server for a job's status.
+    Waiting this long before your first check covers roughly 95% of typical
+    refresh durations, reducing unnecessary API calls.
     """
     durations = []
 
@@ -199,7 +198,7 @@ def calculate_refresh_stats(jobs):
 
 def print_refresh_summary(datasource, jobs, stats):
     """
-    Prints a formatted summary of refresh history and timing analysis.
+    Prints a formatted summary of the refresh history and analysis.
     """
     def format_duration(seconds):
         """Converts a raw second count into a readable mm:ss string."""
@@ -231,22 +230,10 @@ def print_refresh_summary(datasource, jobs, stats):
 
 def validate_results(jobs, stats, sample_size, total_available):
     """
-    Runs basic sanity checks on the results and prints warnings if something
+    Runs basic checks on the results and prints warnings if something
     looks off. These checks help catch situations where the query isn't
-    returning what you'd expect — before you do any real analysis on bad data.
-
-    Checks:
-      1. Did we get fewer results than expected?
-         Could mean: the datasource hasn't run enough times, or the name/ID
-         filter is too narrow (e.g. capitalisation mismatch).
-
-      2. Is the standard deviation very high relative to the mean?
-         A coefficient of variation above 0.5 (stdev > 50% of mean) suggests
-         high variability — the suggested_wait may not be reliable.
-
-      3. How old is the most recent successful refresh?
-         If it's more than 7 days old, the datasource may no longer be
-         refreshing on schedule, or recent runs may be failing silently.
+    returning what you'd expect — before you build a polling strategy on
+    data that may not be realistic.
     """
     print("--- Validation Checks ---")
     issues_found = False
@@ -255,10 +242,10 @@ def validate_results(jobs, stats, sample_size, total_available):
     if len(jobs) < sample_size:
         print(f"  ⚠ Only {len(jobs)} result(s) returned (requested {sample_size}).")
         if total_available == 0:
-            print("    No successful refreshes found at all for this datasource.")
-            print("    Confirm the datasource name matches exactly, including capitalisation.")
+            print("    No successful refreshes found for this datasource.")
+            print("    Confirm the datasource name matches exactly. Check capitalisation.")
         else:
-            print(f"    Only {total_available} successful refresh(es) exist in history.")
+            print(f"    Only {total_available} successful refresh(es) exist in its history.")
         issues_found = True
 
     # Check 2: Is variability too high to trust the suggested wait?
@@ -271,7 +258,7 @@ def validate_results(jobs, stats, sample_size, total_available):
             print("    Consider investigating what causes some refreshes to take much longer.")
             issues_found = True
 
-    # Check 3: Is the most recent refresh suspiciously old?
+    # Check 3: Is the most recent refresh exceptionally old?
     if jobs:
         most_recent = jobs[0].completed_at
         if most_recent:
@@ -299,7 +286,7 @@ def save_history(datasource, stats):
     track how refresh performance changes over time.
 
     CSV is easy to open in Tableau or Excel for visual analysis.
-    JSON preserves more structure and is easy to consume programmatically.
+    JSON keeps the structure and is easy to read programmatically.
 
     Both files are appended to (not overwritten) so history accumulates
     across multiple runs of the script.
@@ -374,14 +361,14 @@ with server.auth.sign_in(tableau_auth):
 
     if not jobs:
         print("No successful refresh jobs found for this datasource.")
-        print("Check that the datasource has extract refreshes configured and has run at least once.")
+        print("Check that the datasource has extract refreshes configured and has been run at least once.")
         exit(1)
 
     # Step 3: Calculate timing statistics
     stats = calculate_refresh_stats(jobs)
 
     if stats is None:
-        print("Could not calculate stats — jobs may be missing start/end timestamps.")
+        print("Could not calculate stats — Jobs may be missing start/end timestamps.")
         exit(1)
 
     # Step 4: Print summary
