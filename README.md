@@ -8,10 +8,9 @@
 ---
 
 ## Overview
+This tutorial is based on a solution to the DataDevQuest.com intermediate challenge (DDQ2026-02) created by Jordan Woods. The tutorial demonstrates how to use TSC's filtering and sorting capabilities to retrieve the last 10 successful extract refreshes for a specific datasource (amount can be adjusted) — without having to load your entire job history into memory. 
 
-This solution demonstrates how to use TSC's filtering and sorting capabilities to retrieve the last 10 successful extract refreshes for a specific datasource — without loading the entire job history into memory. From those results, you will determine the average duration and standard deviation to produce a statistically informed polling wait time.
-
-The extra challenge takes the solution further by providing a result validation and history of completion saved in .csv and JSON.
+The extra challenge takes the solution further by providing a validation and history of completion saved in .csv and JSON.
 
 The solution essentially follows this order:
 
@@ -99,9 +98,9 @@ DATASOURCE_ID = None
 
 ## Developer Sandbox Setup
 
-Getting a datasource with real extract refresh history on a developer sandbox requires a few deliberate steps. This section covers what works, what doesn't, and how to build up enough history to run the script meaningfully.
+Getting a datasource with real extract refresh history from a Tableau developer sandbox requires some additional steps. This section gives an overview of what works, what doesn't, and how to generate enough history to run the script to provide meaningful results.
 
-### Extract vs. Live — why it matters
+### Extract vs. Live — Key Differences
 
 This script analyzes **extract refresh jobs**. A refresh job only exists if the datasource is published as an **extract** — a snapshot of the data stored on Tableau's servers. A **live connection** queries the source directly every time and has no refresh jobs to track.
 
@@ -118,35 +117,35 @@ Not all datasource types support extract refreshes on a developer sandbox. The k
 
 **Best option: Google Sheets**
 
-Google Sheets is the fastest path to a working demo. It's free, Tableau Cloud connects to it natively, and it fully supports extract refreshes.
+Google Sheets is the fastest path to a working demo. It's free, Tableau Cloud connects to it natively, and it fully supports extract refreshes.  When applying to a datasource in production, you can replace your Google Sheet demo source with one that the Tableau Cloud environment has direct access to.
 
-Setup steps:
-1. Create a Google Sheet with a few columns and dummy data — content doesn't matter
+Setup steps (Demo):
+1. Create a Google Sheet with a few columns and dummy data — The content doesn't matter
 2. In Tableau Desktop or Tableau Cloud web authoring, create a new datasource connecting to that sheet
 3. When publishing, set the connection type to **Extract** (not Live)
 4. Once published, open the datasource on Tableau Cloud and trigger manual refreshes from the UI — aim for at least 5
 5. Set `DATASOURCE_NAME` in the script to the exact name of that datasource
 
-Each manual refresh on a small sheet completes in under a minute. Five refreshes takes about five minutes total.
+Each manual refresh on a small sheet completes in under a minute. Five refreshes takes roughly five minutes.
 
 **Other options that work:**
 - Salesforce (free developer org available at developer.salesforce.com)
 - Any other cloud connector that Tableau Cloud can reach without Bridge
 
-**What to avoid:**
+**Things to avoid:**
 - Uploaded CSV or Excel files — these are live file connections with no extract refresh support
 - On-premise databases (SQL Server, Oracle, PostgreSQL, etc.) — require Tableau Bridge on a sandbox, which adds significant setup overhead
 - Tableau Public datasources — read-only, no refresh jobs
 
-### Building enough refresh history
+### Generating enough refresh history
 
-The script defaults to `REFRESH_SAMPLE_SIZE = 10`. On a fresh sandbox datasource you won't have 10 refreshes in history yet. Lower this value to match what you have:
+The script defaults to `REFRESH_SAMPLE_SIZE = 10`. On a new(er) datasource, if you don't have 10 refreshes yet you can lower this value in order to match the amount of records you have.
 
 ```python
 REFRESH_SAMPLE_SIZE = 5  # or however many manual refreshes you've triggered
 ```
 
-Even 3–5 refreshes is enough to verify the pipeline works and produce basic stats. The mean and standard deviation won't be statistically meaningful at that sample size, but the code path is the same.
+Even 3–5 refreshes is enough to verify that the pipeline works and can produce basic stats. The mean and standard deviation won't be statistically meaningful with a sample size this small, but the code script is the same.
 
 ### Confirming your datasource has extract history
 
@@ -164,16 +163,16 @@ If the Refresh History tab is empty or only shows failures, the script will retu
 
 ### Retrieved 0 successful refresh job(s)
 
-This is the most common issue. Work through these in order:
+This was the most common issue when I first started. After a fair amount of troubleshooting, I was able to pinpoint some of the most common causes.  Work through the following in order:
 
 **1. Datasource is a live connection, not an extract**
 The script only finds refresh jobs for extract datasources. Check the datasource on Tableau Cloud — if there's no Refresh History tab, it's a live connection. Re-publish as an extract.
 
 **2. No manual refreshes have been triggered**
-Even an extract datasource has no job history until at least one refresh has run. Go to Tableau Cloud → datasource → **Refresh Now** and run it at least once (ideally 3–5 times).
+Even an extract datasource has no job history until at least one refresh has run. Go to Tableau Cloud → datasource → **Refresh Now** and run it at least once (I would suggest 3–5 times).
 
 **3. `status` filter value mismatch**
-The script filters on `status = "Succeeded"`. Some Tableau Cloud environments use `"Complete"` instead. If you have confirmed refresh history but still get zero results, change this in `get_recent_successful_refreshes`:
+The script filters on `status = "Succeeded"`. I notice that on my Tableau Cloud environment used `"Complete"` instead. If you have confirmed refresh history but still get zero results, change this in `get_recent_successful_refreshes`:
 
 ```python
 options.filter.add(
@@ -182,14 +181,10 @@ options.filter.add(
 ```
 
 **4. `title` filter not matching**
-The background job title must match the datasource name exactly — capitalisation, spaces, and all. If you're unsure of the exact job title, check Admin Views → Background Tasks for Non-Extracts in Tableau Cloud and compare the job title against your `DATASOURCE_NAME` value.
+The background job title must match the datasource name exactly — capitalisation, spaces, and all. If you're not sure of the exact job title, check the Admin Views → Background Tasks for Non-Extracts in Tableau Cloud and compare the job title against your `DATASOURCE_NAME` value.
 
 **5. Datasource name isn't unique**
 If the script prints multiple matches, set `DATASOURCE_ID` to the correct ID from the output and re-run.
-
-### `TypeError: RequestOptions.__init__() got an unexpected keyword argument 'page_size'`
-
-TSC uses `pagesize` (no underscore). The script already uses the correct spelling — if you see this error you may be running an older version of the script. Confirm line 112 reads `TSC.RequestOptions(pagesize=sample_size)`.
 
 ---
 
@@ -538,9 +533,9 @@ with server.auth.sign_in(tableau_auth):
 
 ## Key Concepts
 
-### Why server filtering instead of paging through everything?
+### Why should you use server filtering instead of paging through everything?
 
-The naive approach would be to use `TSC.Pager(server.jobs)` to load all background jobs and then filter them in Python. On an active Tableau site, that could mean pulling a large number of jobs into memory just to find 10. Server-side filtering — using `RequestOptions` with filters — pushes that work to Tableau's servers and sends back only the jobs you actually care about.
+The first thought might be to use `TSC.Pager(server.jobs)` to load all background jobs and then filter them in Python. On an active Tableau site, that could mean pulling a large number of jobs into memory just to find 10. Server-side filtering — using `RequestOptions` with filters — pushes that work to Tableau's servers and sends back only the jobs you actually care about.
 
 The filters used here are:
 
@@ -584,7 +579,7 @@ Three things that can cause the query to not return what you expect:
 
 **Stale most-recent refresh** — If the most recent successful refresh is more than 7 days old, something may have changed: the schedule may have been removed, recent runs may be failing, or the datasource may no longer be active.
 
-### Why both CSV and JSON for history?
+### Why provide both CSV and JSON for history?
 
 The CSV opens directly in Tableau or Excel — You can build a trend line showing whether your datasource is getting slower over time without having to write additional code. The JSON keeps the data structure clean and is easy to read by another Python script or external tool. Writing both gives you flexibility.
 
